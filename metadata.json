@@ -1,0 +1,5 @@
+{
+  "name": "Standard Explorer",
+  "description": "A full-stack application to scrape, store, and explore standards from csres.com, featuring an AI chatbot and image generation.",
+  "requestFramePermissions": []
+}
