@@ -1,7 +1,8 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import cors from 'cors';
-import { getStandards, getStandardCount } from './src/db.ts';
+import cron from 'node-cron';
+import { getStandards, getStandardCount, getAllPrefixes, updatePrefixScrapedAt } from './src/db.ts';
 import { scrapeAndSave, scrapeState, scrapeSpecificPage } from './src/scraper.ts';
 
 async function startServer() {
@@ -10,6 +11,28 @@ async function startServer() {
 
   app.use(cors());
   app.use(express.json());
+
+  // Schedule daily background scrape at 2:00 AM
+  cron.schedule('0 2 * * *', async () => {
+    console.log('Starting daily background scrape for standard prefixes...');
+    try {
+      const prefixes = getAllPrefixes();
+      for (const { prefix } of prefixes) {
+        // Wait until any current scrape finishes
+        while (scrapeState.isScraping) {
+          await new Promise(resolve => setTimeout(resolve, 60000)); // wait 1 minute
+        }
+        console.log(`Daily scrape: starting prefix ${prefix}`);
+        await scrapeAndSave(prefix, 5000);
+        updatePrefixScrapedAt(prefix);
+        // Wait a bit between prefixes
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+      console.log('Daily background scrape completed.');
+    } catch (error) {
+      console.error('Error in daily background scrape:', error);
+    }
+  });
 
   // API Routes
   app.get('/api/standards', async (req, res) => {

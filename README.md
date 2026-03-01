@@ -1,20 +1,95 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 标准信息查询系统 (Standard Information Query System)
 
-# Run and deploy your AI Studio app
+## 项目简介
+这是一个基于 Node.js + React + SQLite 构建的“标准信息查询与本地化管理系统”。
+系统能够从工标网（csres.com）实时检索、抓取国家标准、行业标准信息，并自动将数据合并保存到本地 SQLite 数据库中。
 
-This contains everything you need to run your app locally.
+### 核心功能
+1. **实时搜索与合并**：输入关键词搜索时，系统会自动从工标网抓取第一页数据，并与本地数据库合并展示。
+2. **后台批量抓取**：支持输入关键词（如 `GB`、`9985`），在后台自动翻页抓取所有相关标准，并保存到本地数据库。
+3. **智能前缀提取**：系统会自动从已抓取的标准号中提取前缀（如 `GB`, `DB`, `JJF`, `JJG` 等）并记录。
+4. **每日定时更新**：每天凌晨 2:00，系统会自动触发定时任务，对已记录的所有标准前缀进行全量后台搜索抓取，确保本地数据库始终保持最新。
+5. **响应式设计**：完美适配桌面端和移动端浏览。
 
-View your app in AI Studio: https://ai.studio/apps/a50e9f26-25bd-4ccc-aeaa-3a2715fb3e1d
+---
 
-## Run Locally
+## 技术栈
+- **前端**：React 19, Vite, Tailwind CSS 4, Lucide React
+- **后端**：Node.js, Express
+- **数据库**：SQLite (better-sqlite3)
+- **爬虫**：Axios, Cheerio, iconv-lite (处理 GBK 编码)
+- **定时任务**：node-cron
 
-**Prerequisites:**  Node.js
+---
 
+## 部署指南
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+本项目为前后端同构的单体应用（Full-Stack App），部署非常简单。
+
+### 1. 环境要求
+- **Node.js**: v20.0.0 或更高版本 (推荐 v22，因为使用了原生 TS 运行支持)
+- **npm**: v9 或更高版本
+
+### 2. 获取代码并安装依赖
+```bash
+# 将项目代码上传或克隆到您的服务器
+cd <项目目录>
+
+# 安装所有依赖
+npm install
+```
+
+### 3. 构建前端静态资源
+在部署到生产环境前，需要将 React 前端代码打包为静态文件：
+```bash
+npm run build
+```
+*构建完成后，会在项目根目录生成一个 `dist` 文件夹，里面包含了所有前端静态资源。*
+
+### 4. 启动生产环境服务器
+使用以下命令启动生产服务器：
+```bash
+npm start
+```
+*注：`npm start` 实际上执行的是 `node server.ts`。后端服务会自动运行在 `3000` 端口，并对外提供 API 和静态文件服务。*
+
+### 5. 访问系统
+打开浏览器，访问：
+```
+http://localhost:3000
+```
+*(如果部署在云服务器上，请将 `localhost` 替换为服务器的公网 IP 或绑定的域名，并确保服务器防火墙已放行 3000 端口)*
+
+---
+
+## 进阶配置 (可选)
+
+### 端口修改
+默认端口为 `3000`。如果需要修改，请编辑 `server.ts` 文件中的 `PORT` 变量：
+```typescript
+const PORT = 3000; // 修改为您需要的端口号
+```
+
+### 定时任务修改
+默认的定时更新任务设定在每天凌晨 2:00。如果需要修改时间，请编辑 `server.ts` 中的 cron 表达式：
+```typescript
+// '0 2 * * *' 代表每天凌晨 2:00
+cron.schedule('0 2 * * *', async () => { ... });
+```
+
+### 数据库管理
+- 数据库文件自动生成在项目根目录下的 `standards.db`。
+- 如果需要备份数据，只需定期复制 `standards.db` 文件即可。
+- 如果需要重置系统，直接删除 `standards.db` 文件，重启服务后会自动创建全新的空数据库。
+
+---
+
+## 开发指南
+
+如果您需要对项目进行二次开发，可以使用开发模式：
+
+```bash
+# 启动开发服务器
+npm run dev
+```
+开发模式下，Vite 会作为中间件集成在 Express 中，提供前端模块热替换（HMR）功能。

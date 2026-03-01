@@ -12,7 +12,12 @@ db.exec(`
     status TEXT,
     url TEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
+  );
+
+  CREATE TABLE IF NOT EXISTS standard_prefixes (
+    prefix TEXT UNIQUE PRIMARY KEY,
+    last_scraped_at DATETIME
+  );
 `);
 
 export interface StandardRecord {
@@ -37,6 +42,24 @@ export function insertOrUpdateStandard(std: StandardRecord) {
       updated_at = CURRENT_TIMESTAMP
   `);
   stmt.run(std);
+
+  // Extract prefix (e.g., GB, DB, JJF) and save it
+  const prefixMatch = std.std_num.match(/^[A-Z]+/i);
+  if (prefixMatch) {
+    const prefix = prefixMatch[0].toUpperCase();
+    const prefixStmt = db.prepare(`INSERT OR IGNORE INTO standard_prefixes (prefix) VALUES (?)`);
+    prefixStmt.run(prefix);
+  }
+}
+
+export function getAllPrefixes() {
+  const stmt = db.prepare(`SELECT prefix FROM standard_prefixes ORDER BY last_scraped_at ASC NULLS FIRST`);
+  return stmt.all() as { prefix: string }[];
+}
+
+export function updatePrefixScrapedAt(prefix: string) {
+  const stmt = db.prepare(`UPDATE standard_prefixes SET last_scraped_at = CURRENT_TIMESTAMP WHERE prefix = ?`);
+  stmt.run(prefix);
 }
 
 export function getStandards(query: string, limit: number, offset: number) {
