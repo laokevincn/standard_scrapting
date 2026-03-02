@@ -45,6 +45,8 @@ export async function scrapeSpecificPage(keyword: string, page: number): Promise
       console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
       if (html.includes('安全拦截') || html.includes('验证码') || html.includes('防火墙')) {
         console.log('[WARN] 可能被目标网站的防火墙或验证码拦截了！');
+      } else if (html.includes('您无权访问') || html.includes('超出我们允许的范围')) {
+        console.log('[WARN] 目标网站提示：您的访问已经超出允许的范围（IP 访问频率过高或需要登录）。');
       }
     }
 
@@ -134,6 +136,8 @@ export async function scrapeAndSave(keyword: string, maxPages: number = 100) {
         console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
         if (html.includes('安全拦截') || html.includes('验证码') || html.includes('防火墙')) {
           console.log('[WARN] 可能被目标网站的防火墙或验证码拦截了！');
+        } else if (html.includes('您无权访问') || html.includes('超出我们允许的范围')) {
+          console.log('[WARN] 目标网站提示：您的访问已经超出允许的范围（IP 访问频率过高或需要登录）。');
         }
       }
 
