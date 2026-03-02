@@ -27,8 +27,12 @@ export async function scrapeSpecificPage(keyword: string, page: number): Promise
     const response = await axios.get(searchUrl, {
       responseType: 'arraybuffer',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Referer': BASE_URL
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        'Referer': 'http://www.csres.com/',
+        'Cookie': 'source=www.csres.com; JSESSIONID=AAB03DB4CE4C833B66A1D799333EACD4.wwwcsres; __utma=131666461.1647832508.1772439543.1772439543.1772439543.1; __utmb=131666461; __utmc=131666461; __utmz=131666461.1772439543.1.1.utmccn=(direct)|utmcsr=(direct)|utmcmd=(none); cCount202632=12',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Upgrade-Insecure-Requests': '1'
       },
       timeout: 10000
     });
@@ -41,12 +45,14 @@ export async function scrapeSpecificPage(keyword: string, page: number): Promise
     const rows = $('tr');
     console.log(`[DEBUG] Found ${rows.length} <tr> elements on page ${page}`);
 
-    if (rows.length < 5 && page === 1) {
-      console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
+    if (page === 1) {
       if (html.includes('安全拦截') || html.includes('验证码') || html.includes('防火墙')) {
         console.log('[WARN] 可能被目标网站的防火墙或验证码拦截了！');
+        console.log(`[DEBUG] HTML Preview:\n${html.substring(0, 500)}`);
       } else if (html.includes('您无权访问') || html.includes('超出我们允许的范围')) {
         console.log('[WARN] 目标网站提示：您的访问已经超出允许的范围（IP 访问频率过高或需要登录）。');
+      } else if (rows.length < 10) {
+        console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
       }
     }
 
@@ -115,29 +121,52 @@ export async function scrapeAndSave(keyword: string, maxPages: number = 100) {
 
       const searchUrl = `${BASE_URL}/s.jsp?keyword=${gbkEncodedKeyword}&pageNum=${scrapeState.page}`;
       
-      const response = await axios.get(searchUrl, {
-        responseType: 'arraybuffer',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Referer': BASE_URL
-        },
-        timeout: 15000
-      });
+      let retryCount = 0;
+      let success = false;
+      let html = '';
 
-      console.log(`[DEBUG] HTTP Status: ${response.status}`);
+      while (!success && retryCount < 3) {
+        try {
+          const response = await axios.get(searchUrl, {
+            responseType: 'arraybuffer',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+              'Referer': 'http://www.csres.com/',
+              'Cookie': 'source=www.csres.com; JSESSIONID=AAB03DB4CE4C833B66A1D799333EACD4.wwwcsres; __utma=131666461.1647832508.1772439543.1772439543.1772439543.1; __utmb=131666461; __utmc=131666461; __utmz=131666461.1772439543.1.1.utmccn=(direct)|utmcsr=(direct)|utmcmd=(none); cCount202632=12',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+              'Accept-Language': 'zh-CN,zh;q=0.9',
+              'Upgrade-Insecure-Requests': '1',
+              'Connection': 'keep-alive'
+            },
+            timeout: 20000
+          });
 
-      const html = iconv.decode(Buffer.from(response.data), 'gbk');
+          html = iconv.decode(Buffer.from(response.data), 'gbk');
+          success = true;
+        } catch (err: any) {
+          retryCount++;
+          console.error(`[WARN] Request failed on page ${scrapeState.page} (Attempt ${retryCount}/3): ${err.message}`);
+          if (retryCount >= 3) {
+            throw err; // Re-throw if max retries reached
+          }
+          // Wait longer before retrying (10 seconds)
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+      }
+
       const $ = cheerio.load(html);
 
       const rows = $('tr');
       console.log(`[DEBUG] Found ${rows.length} <tr> elements on page ${scrapeState.page}`);
 
-      if (rows.length < 5 && scrapeState.page === 1) {
-        console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
+      if (scrapeState.page === 1) {
         if (html.includes('安全拦截') || html.includes('验证码') || html.includes('防火墙')) {
           console.log('[WARN] 可能被目标网站的防火墙或验证码拦截了！');
+          console.log(`[DEBUG] HTML Preview:\n${html.substring(0, 500)}`);
         } else if (html.includes('您无权访问') || html.includes('超出我们允许的范围')) {
           console.log('[WARN] 目标网站提示：您的访问已经超出允许的范围（IP 访问频率过高或需要登录）。');
+        } else if (rows.length < 10) {
+          console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
         }
       }
 
@@ -182,7 +211,7 @@ export async function scrapeAndSave(keyword: string, maxPages: number = 100) {
       
       // Delay to prevent IP ban
       if (scrapeState.page <= scrapeState.totalPages && scrapeState.page <= maxPages) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
 
     } while (scrapeState.page <= scrapeState.totalPages && scrapeState.page <= maxPages);
