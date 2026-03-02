@@ -33,8 +33,20 @@ export async function scrapeSpecificPage(keyword: string, page: number): Promise
       timeout: 10000
     });
 
+    console.log(`[DEBUG] HTTP Status: ${response.status}`);
+
     const html = iconv.decode(Buffer.from(response.data), 'gbk');
     const $ = cheerio.load(html);
+
+    const rows = $('tr');
+    console.log(`[DEBUG] Found ${rows.length} <tr> elements on page ${page}`);
+
+    if (rows.length < 5 && page === 1) {
+      console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
+      if (html.includes('安全拦截') || html.includes('验证码') || html.includes('防火墙')) {
+        console.log('[WARN] 可能被目标网站的防火墙或验证码拦截了！');
+      }
+    }
 
     let totalPages = 1;
     let totalRecords = 0;
@@ -110,8 +122,20 @@ export async function scrapeAndSave(keyword: string, maxPages: number = 100) {
         timeout: 15000
       });
 
+      console.log(`[DEBUG] HTTP Status: ${response.status}`);
+
       const html = iconv.decode(Buffer.from(response.data), 'gbk');
       const $ = cheerio.load(html);
+
+      const rows = $('tr');
+      console.log(`[DEBUG] Found ${rows.length} <tr> elements on page ${scrapeState.page}`);
+
+      if (rows.length < 5 && scrapeState.page === 1) {
+        console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
+        if (html.includes('安全拦截') || html.includes('验证码') || html.includes('防火墙')) {
+          console.log('[WARN] 可能被目标网站的防火墙或验证码拦截了！');
+        }
+      }
 
       $('tr').each((i, el) => {
         const tds = $(el).children('td');
