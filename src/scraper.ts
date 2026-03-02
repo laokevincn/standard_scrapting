@@ -172,6 +172,12 @@ export async function scrapeAndSave(initialKeyword: string, maxPages: number = 2
             console.log(`[DEBUG] HTML Preview:\n${html.substring(0, 500)}`);
           } else if (html.includes('您无权访问') || html.includes('超出我们允许的范围')) {
             console.log('[WARN] 目标网站提示：您的访问已经超出允许的范围（IP 访问频率过高或需要登录）。');
+            console.log('[INFO] 触发了查询次数限制，系统将暂停抓取 30 分钟以等待解封...');
+            await new Promise(resolve => setTimeout(resolve, 30 * 60 * 1000)); // 暂停 30 分钟
+            console.log('[INFO] 暂停结束，尝试恢复抓取...');
+            // 将当前关键词重新放回队列头部，以便重试
+            keywordQueue.unshift(keyword);
+            break; // 跳出当前关键词的翻页循环，重新开始
           } else if (rows.length < 10) {
             console.log(`[DEBUG] HTML Preview (first 500 chars):\n${html.substring(0, 500)}`);
           }
@@ -229,10 +235,10 @@ export async function scrapeAndSave(initialKeyword: string, maxPages: number = 2
       } while (scrapeState.page <= scrapeState.totalPages && scrapeState.page <= maxPages);
       
       if (shouldSplit) {
-        // 将关键词拆分为 10 个子任务 (例如 "GB" 拆分为 "GB 0", "GB 1" ... "GB 9")
-        // 加入队列尾部，这样可以交替执行不同的任务
+        // 将关键词拆分为 10 个子任务 (例如 "GB" 拆分为 "GB0", "GB1" ... "GB9")
+        // 注意：不要加空格，因为工标网空格是通配符/多词搜索
         for (let i = 0; i <= 9; i++) {
-          keywordQueue.push(`${keyword} ${i}`);
+          keywordQueue.push(`${keyword}${i}`);
         }
       } else {
         console.log(`Finished scraping for "${keyword}".`);
