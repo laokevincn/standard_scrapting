@@ -1,4 +1,4 @@
-import { gotScraping } from 'got-scraping';
+import axios from 'axios';
 import Bottleneck from 'bottleneck';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
@@ -31,19 +31,22 @@ export async function scrapeSpecificPage(keyword: string, page: number): Promise
 
     const searchUrl = `${BASE_URL}/s.jsp?keyword=${gbkEncodedKeyword}&pageNum=${page}`;
     
-    const response = await limiter.schedule(() => gotScraping.get(searchUrl, {
-      responseType: 'buffer',
+    const response = await limiter.schedule(() => axios.get(searchUrl, {
+      responseType: 'arraybuffer',
       headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
         'Referer': 'http://www.csres.com/',
         'Cookie': 'source=www.csres.com; JSESSIONID=AAB03DB4CE4C833B66A1D799333EACD4.wwwcsres; __utma=131666461.1647832508.1772439543.1772439543.1772439543.1; __utmb=131666461; __utmc=131666461; __utmz=131666461.1772439543.1.1.utmccn=(direct)|utmcsr=(direct)|utmcmd=(none); cCount202632=12',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Upgrade-Insecure-Requests': '1'
       },
-      timeout: { request: 10000 },
-      retry: { limit: 0 } // 我们自己处理重试逻辑
+      timeout: 10000
     }));
 
-    console.log(`[DEBUG] HTTP Status: ${response.statusCode}`);
+    console.log(`[DEBUG] HTTP Status: ${response.status}`);
 
-    const html = iconv.decode(response.body, 'gbk');
+    const html = iconv.decode(Buffer.from(response.data), 'gbk');
     const $ = cheerio.load(html);
 
     const rows = $('tr');
@@ -138,17 +141,21 @@ export async function scrapeAndSave(initialKeyword: string, maxPages: number = 2
 
         while (!success && retryCount < 3) {
           try {
-            const response = await limiter.schedule(() => gotScraping.get(searchUrl, {
-              responseType: 'buffer',
+            const response = await limiter.schedule(() => axios.get(searchUrl, {
+              responseType: 'arraybuffer',
               headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
                 'Referer': 'http://www.csres.com/',
                 'Cookie': 'source=www.csres.com; JSESSIONID=AAB03DB4CE4C833B66A1D799333EACD4.wwwcsres; __utma=131666461.1647832508.1772439543.1772439543.1772439543.1; __utmb=131666461; __utmc=131666461; __utmz=131666461.1772439543.1.1.utmccn=(direct)|utmcsr=(direct)|utmcmd=(none); cCount202632=12',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+                'Upgrade-Insecure-Requests': '1',
+                'Connection': 'keep-alive'
               },
-              timeout: { request: 20000 },
-              retry: { limit: 0 }
+              timeout: 20000
             }));
 
-            html = iconv.decode(response.body, 'gbk');
+            html = iconv.decode(Buffer.from(response.data), 'gbk');
             success = true;
           } catch (err: any) {
             retryCount++;
