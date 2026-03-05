@@ -53,7 +53,7 @@ async function startServer() {
           } else if (std.url_samr) {
             details = await scrapeSamrDetails(std.url_samr);
           }
-          
+
           if (details) {
             updateStandardDetails(std.std_num, details);
             console.log(`Updated details for ${std.std_num}`);
@@ -70,7 +70,7 @@ async function startServer() {
       setTimeout(fetchDetailsJob, 10000); // run every 10 seconds
     }
   };
-  
+
   // Start the details fetching job
   setTimeout(fetchDetailsJob, 5000);
 
@@ -149,13 +149,15 @@ async function startServer() {
   // Protected API for downloading data
   app.get('/api/export', authenticateApiToken, (req, res) => {
     const query = req.query.q as string || '';
-    const items = getStandards(query, 10000, 0); // Limit to 10k for export
-    
+    const sortBy = req.query.sortBy as string || 'updated_at';
+    const sortOrder = req.query.sortOrder as string || 'desc';
+    const items = getStandards(query, 10000, 0, sortBy, sortOrder); // Limit to 10k for export
+
     const ws = xlsx.utils.json_to_sheet(items);
     const wb = xlsx.utils.book_new();
     xlsx.utils.book_append_sheet(wb, ws, "Standards");
     const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    
+
     res.setHeader('Content-Disposition', 'attachment; filename="standards.xlsx"');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buffer);
@@ -171,17 +173,17 @@ async function startServer() {
   app.put('/api/admin/standards/:id', authenticateToken, requireAdmin, (req, res) => {
     const { id } = req.params;
     const details = req.body;
-    
+
     const setClauses = [];
     const params: any = { id };
-    
+
     for (const [key, value] of Object.entries(details)) {
       if (key !== 'id' && key !== 'updated_at') {
         setClauses.push(`${key} = @${key}`);
         params[key] = value;
       }
     }
-    
+
     if (setClauses.length > 0) {
       setClauses.push(`updated_at = CURRENT_TIMESTAMP`);
       db.prepare(`UPDATE standards SET ${setClauses.join(', ')} WHERE id = @id`).run(params);
@@ -203,7 +205,7 @@ async function startServer() {
     if (Array.isArray(ids) && ids.length > 0) {
       const placeholders = ids.map(() => '?').join(',');
       const standards = db.prepare(`SELECT * FROM standards WHERE id IN (${placeholders})`).all(...ids) as any[];
-      
+
       // Start background refresh
       (async () => {
         for (const std of standards) {
@@ -223,15 +225,46 @@ async function startServer() {
     res.json({ success: true, message: 'Batch refresh started in background' });
   });
 
+  app.post('/api/admin/standards/:id/scrape-detail', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const std = db.prepare('SELECT * FROM standards WHERE id = ?').get(id) as any;
+
+      if (!std) {
+        return res.status(404).json({ error: 'Standard not found' });
+      }
+
+      let details = null;
+      if (std.url_csres) {
+        details = await scrapeCsresDetails(std.url_csres);
+      } else if (std.url_samr) {
+        details = await scrapeSamrDetails(std.url_samr);
+      }
+
+      if (details) {
+        updateStandardDetails(std.std_num, details);
+        const updated = db.prepare('SELECT * FROM standards WHERE id = ?').get(id);
+        res.json({ success: true, data: updated, message: 'Scrape completed' });
+      } else {
+        res.status(400).json({ success: false, error: 'Could not fetch details or no URL available' });
+      }
+    } catch (error) {
+      console.error('Error in manual detail scrape:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get('/api/standards', async (req, res) => {
     try {
       const query = req.query.q as string || '';
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = (page - 1) * limit;
+      const sortBy = req.query.sortBy as string || 'updated_at';
+      const sortOrder = req.query.sortOrder as string || 'desc';
 
       // 从本地数据库查询结果
-      const items = getStandards(query, limit, offset);
+      const items = getStandards(query, limit, offset, sortBy, sortOrder);
       const dbTotal = getStandardCount(query);
 
       const finalTotalPages = Math.ceil(dbTotal / limit);
@@ -257,14 +290,14 @@ async function startServer() {
       if (isNaN(id)) {
         return res.status(400).json({ error: 'Invalid ID' });
       }
-      
+
       const { getStandardById } = await import('./src/db.ts');
       const standard = getStandardById(id);
-      
+
       if (!standard) {
         return res.status(404).json({ error: 'Standard not found' });
       }
-      
+
       res.json(standard);
     } catch (error) {
       console.error('Error fetching standard by ID:', error);
@@ -277,7 +310,7 @@ async function startServer() {
     if (!keyword) {
       return res.status(400).json({ error: 'Keyword is required' });
     }
-    
+
     if (source === 'samr') {
       if (scrapeStateSamr.isScraping) {
         return res.status(409).json({ error: 'A scrape task is already running', state: scrapeStateSamr });

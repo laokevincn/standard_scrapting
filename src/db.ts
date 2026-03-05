@@ -98,7 +98,7 @@ export function insertOrUpdateStandard(std: StandardRecord) {
       competent_department = COALESCE(@competent_department, competent_department),
       updated_at = CURRENT_TIMESTAMP
   `);
-  
+
   stmt.run({
     ...std,
     url_csres: std.url_csres || null,
@@ -131,7 +131,16 @@ export function updatePrefixScrapedAt(prefix: string) {
   stmt.run(prefix);
 }
 
-export function getStandards(query: string, limit: number, offset: number) {
+export function getStandards(query: string, limit: number, offset: number, sortBy: string = 'updated_at', sortOrder: string = 'desc') {
+  // Define allowed columns for sorting to prevent SQL injection
+  const allowedColumns = [
+    'id', 'std_num', 'title', 'department', 'implement_date',
+    'status', 'publish_date', 'standard_category', 'updated_at'
+  ];
+
+  const safeSortBy = allowedColumns.includes(sortBy) ? sortBy : 'updated_at';
+  const safeSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
   if (query) {
     const words = query.trim().split(/\s+/);
     const conditions = words.map(() => '(REPLACE(std_num, \' \', \'\') LIKE ? OR title LIKE ?)').join(' AND ');
@@ -139,11 +148,12 @@ export function getStandards(query: string, limit: number, offset: number) {
       const normalizedWord = w.replace(/\s+/g, '');
       return [`%${normalizedWord}%`, `%${w}%`];
     });
-    
-    const stmt = db.prepare(`SELECT * FROM standards WHERE ${conditions} ORDER BY std_num ASC LIMIT ? OFFSET ?`);
+
+    // Sort logic applies to search results as well
+    const stmt = db.prepare(`SELECT * FROM standards WHERE ${conditions} ORDER BY ${safeSortBy} ${safeSortOrder} LIMIT ? OFFSET ?`);
     return stmt.all(...params, limit, offset);
   } else {
-    const stmt = db.prepare(`SELECT * FROM standards ORDER BY updated_at DESC LIMIT ? OFFSET ?`);
+    const stmt = db.prepare(`SELECT * FROM standards ORDER BY ${safeSortBy} ${safeSortOrder} LIMIT ? OFFSET ?`);
     return stmt.all(limit, offset);
   }
 }
@@ -156,7 +166,7 @@ export function getStandardCount(query: string) {
       const normalizedWord = w.replace(/\s+/g, '');
       return [`%${normalizedWord}%`, `%${w}%`];
     });
-    
+
     const stmt = db.prepare(`SELECT COUNT(*) as count FROM standards WHERE ${conditions}`);
     return (stmt.get(...params) as any).count;
   } else {
@@ -183,23 +193,23 @@ export function getStandardsWithoutDetails(limit: number = 10) {
 export function updateStandardDetails(std_num: string, details: Partial<StandardRecord>) {
   const setClauses = [];
   const params: any = { std_num };
-  
+
   for (const [key, value] of Object.entries(details)) {
     if (value !== undefined) {
       setClauses.push(`${key} = @${key}`);
       params[key] = value;
     }
   }
-  
+
   if (setClauses.length === 0) return;
-  
+
   setClauses.push(`updated_at = CURRENT_TIMESTAMP`);
-  
+
   const stmt = db.prepare(`
     UPDATE standards 
     SET ${setClauses.join(', ')}
     WHERE std_num = @std_num
   `);
-  
+
   stmt.run(params);
 }

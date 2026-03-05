@@ -1,1 +1,0 @@
-import { a } from './test2.ts'; console.log(a);

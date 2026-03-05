@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
 const DB_FILE = path.join(process.cwd(), 'standards.db');
@@ -21,7 +21,7 @@ export interface BackupInfo {
 
 export function getBackups(): BackupInfo[] {
   if (!fs.existsSync(BACKUP_DIR)) return [];
-  
+
   const files = fs.readdirSync(BACKUP_DIR);
   return files
     .filter(f => f.endsWith('.db'))
@@ -40,9 +40,9 @@ export function createBackup(): BackupInfo {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `standards_backup_${timestamp}.db`;
   const destPath = path.join(BACKUP_DIR, filename);
-  
+
   fs.copyFileSync(DB_FILE, destPath);
-  
+
   const stats = fs.statSync(destPath);
   return {
     filename,
@@ -65,7 +65,7 @@ export function restoreBackup(filename: string): boolean {
   if (fs.existsSync(filepath)) {
     // Create a backup of the current state before restoring
     createBackup();
-    
+
     // Restore
     fs.copyFileSync(filepath, DB_FILE);
     return true;
@@ -81,7 +81,7 @@ export function setBackupSchedule(cronExpression: string) {
   if (backupTask) {
     backupTask.stop();
   }
-  
+
   if (cronExpression) {
     backupTask = cron.schedule(cronExpression, () => {
       console.log('Running scheduled database backup...');

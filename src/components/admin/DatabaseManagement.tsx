@@ -16,16 +16,19 @@ export function DatabaseManagement() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [sortBy, setSortBy] = useState('updated_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [scrapingId, setScrapingId] = useState<number | null>(null);
 
   const [scrapeKeyword, setScrapeKeyword] = useState('');
   const [scrapeSource, setScrapeSource] = useState('csres');
   const [scrapeStatus, setScrapeStatus] = useState<ScrapeState | null>(null);
   const [startingScrape, setStartingScrape] = useState(false);
 
-  const fetchStandards = async (searchQuery = query, pageNum = page) => {
+  const fetchStandards = async (searchQuery = query, pageNum = page, sortB = sortBy, sortO = sortOrder) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/standards?q=${encodeURIComponent(searchQuery)}&page=${pageNum}&limit=50`);
+      const res = await fetch(`/api/standards?q=${encodeURIComponent(searchQuery)}&page=${pageNum}&limit=50&sortBy=${sortB}&sortOrder=${sortO}`);
       const data = await res.json();
       setStandards(data.data || []);
       setTotalPages(data.pagination?.totalPages || 1);
@@ -37,8 +40,8 @@ export function DatabaseManagement() {
   };
 
   useEffect(() => {
-    fetchStandards(query, page);
-  }, [page]);
+    fetchStandards(query, page, sortBy, sortOrder);
+  }, [page, sortBy, sortOrder]);
 
   // Poll scraper status
   useEffect(() => {
@@ -47,12 +50,12 @@ export function DatabaseManagement() {
         const res = await fetch(`/api/scrape/status?source=${scrapeSource}`);
         const data = await res.json();
         setScrapeStatus(data);
-        
+
         // If it's scraping, refresh the table occasionally to show new data
         if (data.isScraping && data.totalSaved > 0 && data.totalSaved % 10 === 0) {
           fetchStandards(query, page);
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 2000);
     return () => clearInterval(interval);
   }, [query, page, scrapeSource]);
@@ -60,7 +63,22 @@ export function DatabaseManagement() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    fetchStandards(query, 1);
+    fetchStandards(query, 1, sortBy, sortOrder);
+  };
+
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  };
+
+  const renderSortIndicator = (column: string) => {
+    if (sortBy !== column) return null;
+    return <span className="ml-1 text-indigo-600">{sortOrder === 'asc' ? '↑' : '↓'}</span>;
   };
 
   const toggleSelectAll = () => {
@@ -88,7 +106,7 @@ export function DatabaseManagement() {
     try {
       await fetch('/api/admin/standards/batch-delete', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('adminToken')}`
         },
@@ -103,28 +121,50 @@ export function DatabaseManagement() {
 
   const handleBatchRefresh = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`确定要刷新 ${selectedIds.size} 条标准的详细信息吗？此操作将在后台进行。`)) return;
+    if (!confirm(`确定要抓取 ${selectedIds.size} 条标准的详细信息吗？此操作将在后台进行。`)) return;
 
     try {
       await fetch('/api/admin/standards/batch-refresh', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('adminToken')}`
         },
         body: JSON.stringify({ ids: Array.from(selectedIds) })
       });
-      alert('批量刷新已在后台启动。');
+      alert('批量抓取已在后台启动。');
       setSelectedIds(new Set());
     } catch (error) {
       console.error('Failed to refresh standards:', error);
     }
   };
 
+  const handleScrapeDetail = async (id: number) => {
+    setScrapingId(id);
+    try {
+      const res = await fetch(`/api/admin/standards/${id}/scrape-detail`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
+      });
+      if (res.ok) {
+        const { data } = await res.json();
+        setStandards(standards.map(s => s.id === id ? data : s));
+      } else {
+        const err = await res.json();
+        alert(`抓取失败: ${err.error || '未知错误'}`);
+      }
+    } catch (error) {
+      console.error('Failed to scrape detail:', error);
+      alert('抓取失败，请检查网络');
+    } finally {
+      setScrapingId(null);
+    }
+  };
+
   const handleStartScrape = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scrapeKeyword.trim() || scrapeStatus?.isScraping) return;
-    
+
     setStartingScrape(true);
     try {
       await fetch('/api/scrape', {
@@ -145,18 +185,18 @@ export function DatabaseManagement() {
       // Need a valid API token for export
       const tokenRes = await fetch('/api/admin/tokens', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('adminToken')}`
         },
         body: JSON.stringify({ user_id: JSON.parse(localStorage.getItem('adminUser') || '{}').id, expires_in_days: 1 })
       });
       const tokenData = await tokenRes.json();
-      
+
       const res = await fetch(`/api/export?q=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${tokenData.token}` }
       });
-      
+
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
@@ -200,7 +240,7 @@ export function DatabaseManagement() {
             </h2>
             <p className="text-sm text-zinc-500 mt-1">输入关键词，后台自动翻页抓取所有相关标准并保存到本地</p>
           </div>
-          
+
           <div className="flex-1 max-w-md w-full">
             {scrapeStatus?.isScraping ? (
               <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
@@ -264,10 +304,10 @@ export function DatabaseManagement() {
               className="w-full sm:w-auto px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 disabled:opacity-50 transition-colors font-medium flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              批量刷新 ({selectedIds.size})
+              批量抓取详情 ({selectedIds.size})
             </button>
           </div>
-          
+
           <form onSubmit={handleSearch} className="relative w-full lg:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
@@ -299,24 +339,36 @@ export function DatabaseManagement() {
                     className="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
                   />
                 </th>
-                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">ID</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">标准号</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">标准名称</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">状态</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">发布日期</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">更新时间</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('id')}>ID{renderSortIndicator('id')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('std_num')}>标准号{renderSortIndicator('std_num')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('title')}>标准名称{renderSortIndicator('title')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('department')}>部门{renderSortIndicator('department')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('implement_date')}>实施日期{renderSortIndicator('implement_date')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('status')}>状态{renderSortIndicator('status')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('publish_date')}>发布日期{renderSortIndicator('publish_date')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('replace_standard')}>代替标准{renderSortIndicator('replace_standard')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('standard_category')}>标准类别{renderSortIndicator('standard_category')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">CCS代码</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">ICS代码</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">执行单位</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">主管单位</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">来源URL</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">CSRES URL</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap">SAMR URL</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap cursor-pointer hover:bg-zinc-100 transition-colors" onClick={() => handleSort('updated_at')}>更新时间{renderSortIndicator('updated_at')}</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 whitespace-nowrap text-right sticky right-0 bg-zinc-50 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={19} className="px-6 py-12 text-center">
                     <Loader2 className="w-6 h-6 animate-spin text-zinc-400 mx-auto" />
                   </td>
                 </tr>
               ) : standards.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-zinc-500">
+                  <td colSpan={19} className="px-6 py-12 text-center text-zinc-500">
                     未找到标准。
                   </td>
                 </tr>
@@ -333,20 +385,47 @@ export function DatabaseManagement() {
                     </td>
                     <td className="px-4 py-3 text-zinc-500">{std.id}</td>
                     <td className="px-4 py-3 font-mono text-zinc-900 whitespace-nowrap">{std.std_num}</td>
-                    <td className="px-4 py-3 text-zinc-700 max-w-xs truncate" title={std.title}>{std.title}</td>
+                    <td className="px-4 py-3 text-zinc-700 max-w-[200px] truncate" title={std.title}>{std.title}</td>
+                    <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{std.department || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{std.implement_date || '-'}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
-                        std.status.includes('现行') || std.status.includes('Active') 
-                          ? 'bg-emerald-50 text-emerald-700' 
-                          : std.status.includes('作废')
+                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${std.status.includes('现行') || std.status.includes('Active')
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : std.status.includes('作废')
                           ? 'bg-red-50 text-red-700'
                           : 'bg-zinc-100 text-zinc-600'
-                      }`}>
+                        }`}>
                         {std.status || '未知'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{std.publish_date || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 max-w-[150px] truncate" title={std.replace_standard}>{std.replace_standard || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 max-w-[150px] truncate" title={std.standard_category}>{std.standard_category || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{std.ccs_code || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{std.ics_code || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 max-w-[150px] truncate" title={std.execution_unit}>{std.execution_unit || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 max-w-[150px] truncate" title={std.competent_department}>{std.competent_department || '-'}</td>
+                    <td className="px-4 py-3 text-zinc-500 max-w-[150px] truncate" title={std.url}>
+                      {std.url ? <a href={std.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{std.url}</a> : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500 max-w-[150px] truncate" title={std.url_csres}>
+                      {std.url_csres ? <a href={std.url_csres} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{std.url_csres}</a> : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500 max-w-[150px] truncate" title={std.url_samr}>
+                      {std.url_samr ? <a href={std.url_samr} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{std.url_samr}</a> : '-'}
+                    </td>
                     <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{new Date(std.updated_at).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right sticky right-0 bg-white z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.02)]">
+                      <button
+                        onClick={() => handleScrapeDetail(std.id)}
+                        disabled={scrapingId === std.id}
+                        className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-xs font-medium disabled:opacity-50 flex items-center gap-1 ml-auto"
+                      >
+                        {scrapingId === std.id ? (
+                          <><Loader2 className="w-3 h-3 animate-spin" />抓取中</>
+                        ) : '抓取详情'}
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -358,14 +437,14 @@ export function DatabaseManagement() {
           <div className="mt-6 flex items-center justify-between text-sm text-zinc-500">
             <div>第 {page} 页，共 {totalPages} 页</div>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 transition-colors"
               >
                 上一页
               </button>
-              <button 
+              <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 transition-colors"
