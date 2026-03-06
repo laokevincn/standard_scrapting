@@ -202,7 +202,7 @@ export function getMissingScrapeStandards(limit: number = 2000) {
   const stmt = db.prepare(`
     SELECT id, std_num, url, url_samr, url_csres 
     FROM standards 
-    WHERE publish_date IS NULL AND status != 'Scrape Failed'
+    WHERE publish_date IS NULL AND (status IS NULL OR status != 'Scrape Failed')
     LIMIT ?
   `);
   return stmt.all(limit) as { id: number, std_num: string, url: string, url_samr: string, url_csres: string }[];

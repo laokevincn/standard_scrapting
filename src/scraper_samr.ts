@@ -6,6 +6,21 @@ import { scrapeSamrDetails } from './scraper_details.ts';
 
 const BASE_URL = 'https://std.samr.gov.cn';
 
+axios.interceptors.response.use(
+  (response) => {
+    if (response.data && typeof response.data === 'object' && response.data.code === 500 && response.data.message?.includes('访问过于频繁')) {
+      throw new Error('IP_BLOCKED');
+    }
+    return response;
+  },
+  (error) => {
+    if (error.response && error.response.data && error.response.data.code === 500 && error.response.data.message?.includes('访问过于频繁')) {
+      throw new Error('IP_BLOCKED');
+    }
+    return Promise.reject(error);
+  }
+);
+
 // 使用 bottleneck 精准控制并发和请求频率
 const limiter = new Bottleneck({
   maxConcurrent: 1,
@@ -93,8 +108,12 @@ export async function scrapeSpecificPageSamr(keyword: string, page: number): Pro
     });
 
     return { totalPages, totalRecords };
-  } catch (error) {
-    console.error(`[SAMR] Error on-demand scraping page ${page} for "${keyword}":`, error);
+  } catch (error: any) {
+    if (error.message === 'IP_BLOCKED') {
+      console.error(`[SAMR CRITICAL] IP Blocked during on-demand scrape!`);
+    } else {
+      console.error(`[SAMR] Error on-demand scraping page ${page} for "${keyword}":`, error);
+    }
     return { totalPages: 1, totalRecords: 0 };
   }
 }
@@ -146,6 +165,9 @@ export async function scrapeAndSaveSamr(initialKeyword: string, maxPages: number
             html = response.data;
             success = true;
           } catch (err: any) {
+            if (err.message === 'IP_BLOCKED') {
+              throw err;
+            }
             retryCount++;
             addSamrLog(`WARNING: Request failed on page ${scrapeStateSamr.page} (Attempt ${retryCount}/3): ${err.message}`);
             if (retryCount >= 3) {
@@ -230,8 +252,13 @@ export async function scrapeAndSaveSamr(initialKeyword: string, maxPages: number
       addSamrLog(`All tasks finished. Total saved: ${scrapeStateSamr.totalSaved} records.`);
     }
   } catch (error: any) {
-    addSamrLog(`ERROR during execution: ${error.message}`);
-    console.error(`[SAMR ERROR]:`, error);
+    if (error.message === 'IP_BLOCKED') {
+      addSamrLog(`CRITICAL: SAMR IP Blocked (访问过于频繁). Aborting all tasks.`);
+      scrapeStateSamr.isCancelled = true;
+    } else {
+      addSamrLog(`ERROR during execution: ${error.message}`);
+      console.error(`[SAMR ERROR]:`, error);
+    }
   } finally {
     scrapeStateSamr.isScraping = false;
     scrapeStateSamr.isCancelled = false;
@@ -292,6 +319,7 @@ export async function findSamrUrl(stdNum: string): Promise<string | null> {
 
     return foundUrl;
   } catch (err: any) {
+    if (err.message === 'IP_BLOCKED') throw err;
     console.error(`  [Search Error for ${stdNum}] ${err.message}`);
     return null;
   }
@@ -359,8 +387,13 @@ export async function startRescrapeMissing() {
       addRescrapeLog(`Rescrape Complete! Success: ${rescrapeState.successCount}, Failed: ${rescrapeState.failCount}`);
     }
   } catch (error: any) {
-    addRescrapeLog(`ERROR during rescrape: ${error.message}`);
-    console.error(`[Rescrape ERROR]:`, error);
+    if (error.message === 'IP_BLOCKED') {
+      addRescrapeLog(`CRITICAL: SAMR IP Blocked (访问过于频繁). Aborting all rescrape tasks.`);
+      rescrapeState.isCancelled = true;
+    } else {
+      addRescrapeLog(`ERROR during rescrape: ${error.message}`);
+      console.error(`[Rescrape ERROR]:`, error);
+    }
   } finally {
     rescrapeState.isRunning = false;
     rescrapeState.isCancelled = false;

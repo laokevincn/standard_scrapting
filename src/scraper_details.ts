@@ -14,6 +14,21 @@ const axiosInstance = axios.create({
   }
 });
 
+axiosInstance.interceptors.response.use(
+  (response) => {
+    if (response.data && typeof response.data === 'object' && response.data.code === 500 && response.data.message?.includes('访问过于频繁')) {
+      throw new Error('IP_BLOCKED');
+    }
+    return response;
+  },
+  (error) => {
+    if (error.response && error.response.data && error.response.data.code === 500 && error.response.data.message?.includes('访问过于频繁')) {
+      throw new Error('IP_BLOCKED');
+    }
+    return Promise.reject(error);
+  }
+);
+
 export async function scrapeCsresDetails(url: string): Promise<any> {
   try {
     const response = await axios.get(url, {
@@ -111,6 +126,9 @@ export async function scrapeSamrDetails(url: string): Promise<any> {
       department: data.department || null,
     };
   } catch (error) {
+    if ((error as Error).message === 'IP_BLOCKED') {
+      throw error;
+    }
     console.error(`Error scraping samr details from ${url}:`, (error as Error).message);
     return null;
   }
