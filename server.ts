@@ -313,6 +313,12 @@ async function startServer() {
 
       if (details) {
         updateStandardDetails(std.std_num, details);
+
+        // If we successfully fetched from SAMR, ensure the main url pointer is updated and csres is erased
+        if (targetUrl && !targetUrl.includes('csres.com')) {
+          db.prepare('UPDATE standards SET url = ?, url_csres = NULL WHERE id = ?').run(targetUrl, id);
+        }
+
         const updated = db.prepare('SELECT * FROM standards WHERE id = ?').get(id);
         res.json({ success: true, data: updated, message: 'Scrape completed' });
       } else {

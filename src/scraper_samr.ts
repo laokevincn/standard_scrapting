@@ -4,9 +4,21 @@ import * as cheerio from 'cheerio';
 import { insertOrUpdateStandard, updateStandardDetails } from './db.ts';
 import { scrapeSamrDetails } from './scraper_details.ts';
 
+import https from 'https';
+
 const BASE_URL = 'https://std.samr.gov.cn';
 
-axios.interceptors.response.use(
+const axiosInstance = axios.create({
+  httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+  timeout: 30000,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  }
+});
+
+axiosInstance.interceptors.response.use(
   (response) => {
     if (response.data && typeof response.data === 'object' && response.data.code === 500 && response.data.message?.includes('访问过于频繁')) {
       throw new Error('IP_BLOCKED');
@@ -60,13 +72,16 @@ export async function scrapeSpecificPageSamr(keyword: string, page: number): Pro
   try {
     const searchUrl = `${BASE_URL}/search/stdPage?q=${encodeURIComponent(keyword)}&pageNo=${page}`;
 
-    const response = await limiter.schedule(() => axios.get(searchUrl, {
+    const response = await limiter.schedule(() => axiosInstance.get(searchUrl, {
       timeout: 10000
     }));
 
     console.log(`[SAMR DEBUG] HTTP Status: ${response.status}`);
 
     const html = response.data;
+    if (typeof html === 'string' && (html.includes('loginPop()') || html.includes('访问过于频繁'))) {
+      throw new Error('IP_BLOCKED');
+    }
     const $ = cheerio.load(html);
 
     const posts = $('.post');
@@ -158,11 +173,14 @@ export async function scrapeAndSaveSamr(initialKeyword: string, maxPages: number
 
         while (!success && retryCount < 3) {
           try {
-            const response = await limiter.schedule(() => axios.get(searchUrl, {
+            const response = await limiter.schedule(() => axiosInstance.get(searchUrl, {
               timeout: 20000
             }));
 
             html = response.data;
+            if (typeof html === 'string' && (html.includes('loginPop()') || html.includes('访问过于频繁'))) {
+              throw new Error('IP_BLOCKED');
+            }
             success = true;
           } catch (err: any) {
             if (err.message === 'IP_BLOCKED') {
@@ -299,7 +317,10 @@ export async function findSamrUrl(stdNum: string): Promise<string | null> {
   const searchUrl = `${BASE_URL}/search/stdPage?q=${encodeURIComponent(cleanStdNum)}`;
 
   try {
-    const res = await limiter.schedule(() => axios.get(searchUrl, { timeout: 15000 }));
+    const res = await limiter.schedule(() => axiosInstance.get(searchUrl, { timeout: 15000 }));
+    if (res.data && typeof res.data === 'string' && (res.data.includes('loginPop()') || res.data.includes('访问过于频繁'))) {
+      throw new Error('IP_BLOCKED');
+    }
     const $ = cheerio.load(res.data);
     let foundUrl: string | null = null;
 

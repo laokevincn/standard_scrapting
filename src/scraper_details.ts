@@ -113,6 +113,13 @@ export async function scrapeSamrDetails(url: string): Promise<any> {
       });
     }
 
+    if (Object.keys(data).length === 0) {
+      const htmlText = response.data.toString();
+      if (htmlText.includes('loginPop()') || htmlText.includes('访问过于频繁')) {
+        throw new Error('IP_BLOCKED');
+      }
+    }
+
     return {
       publish_date: data.publish_date || null,
       implement_date: data.implement_date || null,
