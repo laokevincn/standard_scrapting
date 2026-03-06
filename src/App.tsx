@@ -14,6 +14,8 @@ import { UserManagement } from './components/admin/UserManagement';
 import { Settings } from './components/admin/Settings';
 import { TokenManagement } from './components/admin/TokenManagement';
 import { DatabaseManagement } from './components/admin/DatabaseManagement';
+import { DatabaseBackups } from './components/admin/DatabaseBackups';
+import { TaskMonitoring } from './components/admin/TaskMonitoring';
 
 function MainLayout() {
   return (
@@ -57,6 +59,8 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="tokens" element={<TokenManagement />} />
           <Route path="database" element={<DatabaseManagement />} />
+          <Route path="backups" element={<DatabaseBackups />} />
+          <Route path="tasks" element={<TaskMonitoring />} />
         </Route>
       </Routes>
     </Router>

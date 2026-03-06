@@ -69,7 +69,7 @@ export function StandardTable() {
               本地总计 <span className="font-semibold text-zinc-900">{totalCount}</span> 条标准
             </p>
           </div>
-          
+
           <div className="flex gap-3 w-full sm:w-auto">
             <form onSubmit={handleSearch} className="relative flex-1 sm:w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
@@ -129,20 +129,19 @@ export function StandardTable() {
                     </td>
                     <td className="px-6 py-4 text-zinc-700 max-w-md truncate" title={std.title}>{std.title}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
-                        std.status.includes('现行') || std.status.includes('Active') 
-                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20' 
-                          : std.status.includes('作废')
-                          ? 'bg-red-50 text-red-700 ring-1 ring-red-600/20'
-                          : 'bg-zinc-100 text-zinc-600 ring-1 ring-zinc-500/20'
-                      }`}>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${(std.status || '').includes('现行') || (std.status || '').includes('Active')
+                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                          : (std.status || '').includes('作废')
+                            ? 'bg-red-50 text-red-700 ring-1 ring-red-600/20'
+                            : 'bg-zinc-100 text-zinc-600 ring-1 ring-zinc-500/20'
+                        }`}>
                         {std.status || '未知'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-zinc-500 whitespace-nowrap">{std.publish_date || '-'}</td>
                     <td className="px-6 py-4 text-zinc-500 whitespace-nowrap">{std.implement_date || '-'}</td>
                     <td className="px-6 py-4 text-right whitespace-nowrap">
-                      <Link 
+                      <Link
                         to={`/standard/${std.id}`}
                         className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-zinc-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors opacity-0 group-hover:opacity-100"
                         title="查看详情"
@@ -161,14 +160,14 @@ export function StandardTable() {
           <div className="p-4 border-t border-zinc-100 flex items-center justify-between text-sm text-zinc-500 bg-zinc-50/50">
             <div>第 {page} 页，共 {totalPages} 页</div>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 transition-colors"
               >
                 上一页
               </button>
-              <button 
+              <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 transition-colors"

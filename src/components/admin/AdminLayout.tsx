@@ -21,10 +21,12 @@ export function AdminLayout() {
 
   const navItems = [
     { path: '/admin', icon: LayoutDashboard, label: '控制台' },
+    { path: '/admin/database', icon: Database, label: '数据库管理' },
+    { path: '/admin/backups', icon: Database, label: '数据库备份' },
+    { path: '/admin/tasks', icon: LayoutDashboard, label: '任务监控' },
     { path: '/admin/users', icon: Users, label: '用户管理' },
     { path: '/admin/settings', icon: Settings, label: '系统设置' },
     { path: '/admin/tokens', icon: Key, label: 'API 令牌' },
-    { path: '/admin/database', icon: Database, label: '数据库管理' },
   ];
 
   return (
@@ -32,8 +34,8 @@ export function AdminLayout() {
       {/* Mobile Header */}
       <div className="md:hidden bg-white border-b border-zinc-200 h-16 flex items-center justify-between px-4 sticky top-0 z-20">
         <h1 className="text-lg font-bold text-zinc-900">管理后台</h1>
-        <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 -mr-2 text-zinc-600 hover:text-zinc-900 transition-colors"
         >
           {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -42,7 +44,7 @@ export function AdminLayout() {
 
       {/* Sidebar Overlay */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-zinc-900/50 z-30 md:hidden backdrop-blur-sm"
           onClick={() => setIsMobileMenuOpen(false)}
         />
@@ -65,11 +67,10 @@ export function AdminLayout() {
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive 
-                    ? 'bg-indigo-50 text-indigo-700' 
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                    ? 'bg-indigo-50 text-indigo-700'
                     : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
-                }`}
+                  }`}
               >
                 <Icon className="w-5 h-5" />
                 {item.label}

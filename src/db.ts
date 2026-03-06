@@ -131,8 +131,39 @@ export function updatePrefixScrapedAt(prefix: string) {
   stmt.run(prefix);
 }
 
-export function getStandards(query: string, limit: number, offset: number, sortBy: string = 'updated_at', sortOrder: string = 'desc') {
-  // Define allowed columns for sorting to prevent SQL injection
+export function buildWhereClause(query: string, filters: Record<string, string> = {}) {
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  // 1. Handle global search query
+  if (query) {
+    const words = query.trim().split(/\s+/);
+    const queryConditions = words.map(() => '(REPLACE(std_num, \' \', \'\') LIKE ? OR title LIKE ?)').join(' AND ');
+    conditions.push(`(${queryConditions})`);
+    for (const w of words) {
+      params.push(`%${w.replace(/\s+/g, '')}%`, `%${w}%`);
+    }
+  }
+
+  // 2. Handle specific column filters
+  for (const [key, value] of Object.entries(filters)) {
+    if (!value || typeof value !== 'string') continue;
+
+    // Whitelist allowed filter columns to prevent SQL injection
+    const allowedFilterColumns = [
+      'department', 'status', 'standard_category', 'implement_date', 'publish_date'
+    ];
+    if (allowedFilterColumns.includes(key)) {
+      conditions.push(`${key} LIKE ?`);
+      params.push(`%${value.trim()}%`);
+    }
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { whereClause, params };
+}
+
+export function getStandards(query: string, limit: number, offset: number, sortBy: string = 'updated_at', sortOrder: string = 'desc', filters: Record<string, string> = {}) {
   const allowedColumns = [
     'id', 'std_num', 'title', 'department', 'implement_date',
     'status', 'publish_date', 'standard_category', 'updated_at'
@@ -141,38 +172,15 @@ export function getStandards(query: string, limit: number, offset: number, sortB
   const safeSortBy = allowedColumns.includes(sortBy) ? sortBy : 'updated_at';
   const safeSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-  if (query) {
-    const words = query.trim().split(/\s+/);
-    const conditions = words.map(() => '(REPLACE(std_num, \' \', \'\') LIKE ? OR title LIKE ?)').join(' AND ');
-    const params = words.flatMap(w => {
-      const normalizedWord = w.replace(/\s+/g, '');
-      return [`%${normalizedWord}%`, `%${w}%`];
-    });
-
-    // Sort logic applies to search results as well
-    const stmt = db.prepare(`SELECT * FROM standards WHERE ${conditions} ORDER BY ${safeSortBy} ${safeSortOrder} LIMIT ? OFFSET ?`);
-    return stmt.all(...params, limit, offset);
-  } else {
-    const stmt = db.prepare(`SELECT * FROM standards ORDER BY ${safeSortBy} ${safeSortOrder} LIMIT ? OFFSET ?`);
-    return stmt.all(limit, offset);
-  }
+  const { whereClause, params } = buildWhereClause(query, filters);
+  const stmt = db.prepare(`SELECT * FROM standards ${whereClause} ORDER BY ${safeSortBy} ${safeSortOrder} LIMIT ? OFFSET ?`);
+  return stmt.all(...params, limit, offset);
 }
 
-export function getStandardCount(query: string) {
-  if (query) {
-    const words = query.trim().split(/\s+/);
-    const conditions = words.map(() => '(REPLACE(std_num, \' \', \'\') LIKE ? OR title LIKE ?)').join(' AND ');
-    const params = words.flatMap(w => {
-      const normalizedWord = w.replace(/\s+/g, '');
-      return [`%${normalizedWord}%`, `%${w}%`];
-    });
-
-    const stmt = db.prepare(`SELECT COUNT(*) as count FROM standards WHERE ${conditions}`);
-    return (stmt.get(...params) as any).count;
-  } else {
-    const stmt = db.prepare(`SELECT COUNT(*) as count FROM standards`);
-    return (stmt.get() as any).count;
-  }
+export function getStandardCount(query: string, filters: Record<string, string> = {}) {
+  const { whereClause, params } = buildWhereClause(query, filters);
+  const stmt = db.prepare(`SELECT COUNT(*) as count FROM standards ${whereClause}`);
+  return (stmt.get(...params) as any).count;
 }
 
 export function getStandardById(id: number) {
@@ -190,12 +198,26 @@ export function getStandardsWithoutDetails(limit: number = 10) {
   return stmt.all(limit) as StandardRecord[];
 }
 
+export function getMissingScrapeStandards(limit: number = 2000) {
+  const stmt = db.prepare(`
+    SELECT id, std_num, url, url_samr, url_csres 
+    FROM standards 
+    WHERE publish_date IS NULL AND status != 'Scrape Failed'
+    LIMIT ?
+  `);
+  return stmt.all(limit) as { id: number, std_num: string, url: string, url_samr: string, url_csres: string }[];
+}
+
+export function markStandardFailed(id: number) {
+  db.prepare(`UPDATE standards SET status = 'Scrape Failed' WHERE id = ?`).run(id);
+}
+
 export function updateStandardDetails(std_num: string, details: Partial<StandardRecord>) {
   const setClauses = [];
   const params: any = { std_num };
 
   for (const [key, value] of Object.entries(details)) {
-    if (value !== undefined) {
+    if (value !== undefined && value !== null && value !== '') {
       setClauses.push(`${key} = @${key}`);
       params[key] = value;
     }
